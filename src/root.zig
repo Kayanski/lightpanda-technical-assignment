@@ -166,20 +166,32 @@ pub const HttpRequest = struct {
     /// Returns a HttpResponse struct containing the parsed response data
     /// HttpResponse is allocated on the head, the caller is responsible for freeing the corresponding memory
     pub fn send(self: *HttpRequest) clientError.HttpClientSendError!HttpResponse {
+        if (self.requestString != null or self.responseString != null) {
+            return error.CantSendRequestTwice;
+        }
         // Creating the request string
-        self.requestString = try self.createHttpRequestString();
+        // Saving it in case the user wants to use it later
+        const requestString = try self.createHttpRequestString();
+        errdefer {
+            self.allocator.free(requestString);
+            self.requestString = null;
+        }
+        self.requestString = requestString;
 
         // Sending the bytes
         var writer = self.connection.writer(&.{});
-        try writer.interface.writeAll(self.requestString.?);
+        try writer.interface.writeAll(requestString);
 
         // Reading the response. Saving that in case the user wants to use it
         const responseString = try self.readResponse();
+        errdefer {
+            self.allocator.free(responseString);
+            self.responseString = null;
+        }
         self.responseString = responseString;
 
         // Parsing the HTTP Response
-        const response = try self.parseResponse();
-        return response;
+        return self.parseResponse();
     }
 
     /// Internals: Create the HTTP Request String from the given parameters

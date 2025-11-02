@@ -1,5 +1,6 @@
 const std = @import("std");
 const http_client = @import("root.zig");
+const clientError = @import("error.zig");
 
 const HttpRequest = http_client.HttpRequest;
 const HttpParams = http_client.HttpParams;
@@ -103,4 +104,29 @@ test "basic http get request using init" {
         },
         else => return error.ArgsIsNotAnObject,
     }
+}
+
+test "can't send twice" {
+    const allocator = std.testing.allocator;
+
+    var httpRequest = try HttpRequest.init(allocator, "httpbin.io", "/get?test_param=1&another_param=%2Fnicoco", HttpParams{});
+    defer httpRequest.deinit();
+    var response = try httpRequest.send();
+    defer response.deinit();
+    const secondResponseResult = httpRequest.send();
+    try std.testing.expectError(clientError.HttpClientSendError.CantSendRequestTwice, secondResponseResult);
+}
+
+test "basic 404 http get request" {
+    const allocator = std.testing.allocator;
+
+    const url = "http://httpbin.io/getit";
+
+    var httpRequest = try HttpRequest.get(allocator, url);
+    defer httpRequest.deinit();
+    var response = try httpRequest.send();
+    defer response.deinit();
+
+    try std.testing.expectEqual(404, response.status_code);
+    try std.testing.expectEqualStrings("Not Found", response.status_str);
 }
