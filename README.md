@@ -1,6 +1,6 @@
 # Http Client
 
-This library is an HTTP Client used that can
+This library is a simple HTTP Client. It responds to the following assignment : <https://gist.github.com/krichprollsch/b75fd0d73a30e7322e37f09420b27792>.
 
 ## Features
 
@@ -13,7 +13,7 @@ This library is an HTTP Client used that can
 
 To use that library in your project, run the following commands:
 
-```bash
+```sh
 zig fetch --save git+https://github.com/Kayanski/lightpanda-technical-assignment/#HEAD
 ```
 
@@ -56,6 +56,10 @@ switch (parsedBody.value.args) {
     },
     else => return error.ArgsIsNotAnObject,
 }
+
+// Using the body bytes directly
+const bodyString = response.body;
+_ = bodyString;
 ```
 
 ## Upcoming Features

@@ -270,7 +270,7 @@ pub const HttpRequest = struct {
         }
 
         // Parsing the body
-        // For now, we don't consider the Chuncked Transfer Encoding, so we can just return the whole body bytes
+        // TODO: This function doesn't consider the Chunked Transfer Encoding, so we just return the whole body bytes
         const body = response[headerEnd..];
 
         // Then parse the rest of the response
