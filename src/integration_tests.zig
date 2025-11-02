@@ -19,7 +19,8 @@ test "http get request with headers" {
         .headers = headers,
     });
     defer httpRequest.deinit();
-    const response = try httpRequest.send();
+    var response = try httpRequest.send();
+    defer response.deinit();
 
     try std.testing.expectEqual(200, response.status_code);
     try std.testing.expectEqualStrings("OK", response.status_str);
@@ -57,7 +58,8 @@ test "basic http get request" {
 
     var httpRequest = try HttpRequest.get(allocator, url);
     defer httpRequest.deinit();
-    const response = try httpRequest.send();
+    var response = try httpRequest.send();
+    defer response.deinit();
 
     try std.testing.expectEqual(200, response.status_code);
     try std.testing.expectEqualStrings("OK", response.status_str);
@@ -82,7 +84,8 @@ test "basic http get request using init" {
 
     var httpRequest = try HttpRequest.init(allocator, "httpbin.io", "/get?test_param=1&another_param=%2Fnicoco", HttpParams{});
     defer httpRequest.deinit();
-    const response = try httpRequest.send();
+    var response = try httpRequest.send();
+    defer response.deinit();
 
     try std.testing.expectEqual(200, response.status_code);
     try std.testing.expectEqualStrings("OK", response.status_str);

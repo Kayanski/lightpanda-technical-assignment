@@ -51,6 +51,7 @@ pub const HttpResponse = struct {
 ///         var httpRequest = try HttpRequest.init(allocator, "httpbin.io", "/get", HttpParams{});
 ///         defer httpRequest.deinit();
 ///         const response = try httpRequest.send();
+///         defer response.deinit();
 ///     ```
 ///
 /// General Request with complete URL:
@@ -59,6 +60,7 @@ pub const HttpResponse = struct {
 ///         var httpRequest = try HttpRequest.request(allocator, "http://httpbin.io/get", HttpParams{});
 ///         defer httpRequest.deinit();
 ///         const response = try httpRequest.send();
+///         defer response.deinit();
 ///     ```
 ///
 /// Simple Get Request
@@ -67,6 +69,7 @@ pub const HttpResponse = struct {
 ///         var httpRequest = try HttpRequest.get(allocator, "http://httpbin.io/get");
 ///         defer httpRequest.deinit();
 ///         const response = try httpRequest.send();
+///         defer response.deinit();
 ///     ```
 ///
 /// TODO : Add HTTPs support
@@ -78,7 +81,6 @@ pub const HttpRequest = struct {
     params: HttpParams,
     requestString: ?[]const u8 = undefined,
     responseString: ?[]const u8 = undefined,
-    response: ?HttpResponse = undefined,
 
     /// Creates a HttpRequest for a given server address and path
     /// Refer to the `HttpRequest` documentation for example usage
@@ -144,9 +146,6 @@ pub const HttpRequest = struct {
         if (self.responseString != null) {
             self.allocator.free(self.responseString.?);
         }
-        if (self.response != null) {
-            self.response.?.deinit();
-        }
     }
 
     /// Sends the Http Request
@@ -166,7 +165,6 @@ pub const HttpRequest = struct {
 
         // Parsing the HTTP Response
         const response = try self.parseResponse();
-        self.response = response;
         return response;
     }
 
