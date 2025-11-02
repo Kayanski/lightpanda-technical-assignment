@@ -133,6 +133,8 @@ pub const HttpRequest = struct {
         // TODO : Change when implementing HTTPS
         const uriPort = uri.port orelse 80;
 
+        // Establish the TCP Connection
+        // TODO : also allow the connection to use TLS. When adding TLS, the connection variable may become a union type
         const connection = try std.net.tcpConnectToHost(allocator, host_name, uriPort);
 
         return HttpRequest{
