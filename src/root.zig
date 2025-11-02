@@ -164,7 +164,8 @@ pub const HttpRequest = struct {
 
     /// Sends the Http Request
     /// Returns a HttpResponse struct containing the parsed response data
-    /// HttpResponse is allocated on the head, the caller is responsible for freeing the corresponding memory
+    /// The send function can only be successfully called once. If the function returns an error, send can be retried
+    /// HttpResponse is allocated on the heap, the caller is responsible for freeing the corresponding memory
     pub fn send(self: *HttpRequest) clientError.HttpClientSendError!HttpResponse {
         if (self.requestString != null or self.responseString != null) {
             return error.CantSendRequestTwice;
