@@ -10,11 +10,9 @@ test "http get request with headers" {
     const allocator = std.testing.allocator;
 
     var headers = std.StringHashMap([]const u8).init(allocator);
-    defer headers.deinit();
-
     try headers.put("x-test-header", "test-value");
-    const url = "http://httpbin.io/get?test_param=1";
 
+    const url = "http://httpbin.io/get?test_param=1";
     var httpRequest = try HttpRequest.request(allocator, url, HttpParams{
         .headers = headers,
     });

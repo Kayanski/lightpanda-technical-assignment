@@ -1,16 +1,23 @@
 const std = @import("std");
+const clientError = @import("error.zig");
 const Allocator = std.mem.Allocator;
 
 const Method = enum {
     GET,
     // TODO: Here we can add other request methods
 };
+
+/// Parameters for the HTTP Request
+/// All fields are optional
+/// method defaults to GET
 pub const HttpParams = struct {
     method: Method = Method.GET,
     body: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
 };
 
+/// Represents a parsed HTTP Response
+/// Usually not constructed directly, but returned from HttpRequest.send()
 pub const HttpResponse = struct {
     status_str: []const u8,
     status_code: u16,
@@ -23,7 +30,7 @@ pub const HttpResponse = struct {
 
     /// Simple helper to parse the body as JSON
     /// If you need more control over the parsing, use `std.json.parseFromSlice` directly
-    pub fn json(self: HttpResponse, comptime T: type, allocator: Allocator) !std.json.Parsed(T) {
+    pub fn json(self: HttpResponse, comptime T: type, allocator: Allocator) std.json.ParseError(std.json.Scanner)!std.json.Parsed(T) {
         return std.json.parseFromSlice(T, allocator, self.body, .{});
     }
 
@@ -90,9 +97,12 @@ pub const HttpRequest = struct {
     ///  const allocator = std.testing.allocator;
     ///  var httpRequest = try HttpRequest.init(allocator, "httpbin.io", "/get?params=1&test=%2Fnicoco", HttpParams{});
     ///  defer httpRequest.deinit();
+    /// ```
+    /// Note that params.headers' ownership is transferred to the HttpRequest.
+    /// The struct is responsible for freeing the memory
     /// Dev: This was added to fit the API requirements from the task.
     /// Dev: Though the `get` API is preferable since it simplifies the usage.
-    pub fn init(allocator: Allocator, address: []const u8, path: []const u8, params: ?HttpParams) !HttpRequest {
+    pub fn init(allocator: Allocator, address: []const u8, path: []const u8, params: ?HttpParams) clientError.HttpClientInitError!HttpRequest {
         const uri = std.Uri{
             .scheme = "http",
             .host = std.Uri.Component{ .raw = address },
@@ -104,18 +114,18 @@ pub const HttpRequest = struct {
     /// Creates a HttpRequest for a given address
     /// This is the general and preferred entry point for creating HTTP requests
     /// Refer to the `HttpRequest` documentation for example usage
-    pub fn request(allocator: Allocator, address: []const u8, params: ?HttpParams) !HttpRequest {
+    pub fn request(allocator: Allocator, address: []const u8, params: ?HttpParams) clientError.HttpClientInitError!HttpRequest {
         const uri = try std.Uri.parse(address);
         return HttpRequest.initWithUri(allocator, uri, params);
     }
 
     /// Simplified API to send a simple GET request to a given address
-    pub fn get(allocator: Allocator, address: []const u8) !HttpRequest {
+    pub fn get(allocator: Allocator, address: []const u8) clientError.HttpClientInitError!HttpRequest {
         return HttpRequest.request(allocator, address, HttpParams{ .method = Method.GET });
     }
 
     /// General Request Creation API for users that need more control
-    pub fn initWithUri(allocator: Allocator, uri: std.Uri, params: ?HttpParams) !HttpRequest {
+    pub fn initWithUri(allocator: Allocator, uri: std.Uri, params: ?HttpParams) clientError.HttpClientInitError!HttpRequest {
         var host_name_buffer: [std.Uri.host_name_max]u8 = undefined;
         const host_name = try uri.getHost(&host_name_buffer);
 
@@ -146,12 +156,16 @@ pub const HttpRequest = struct {
         if (self.responseString != null) {
             self.allocator.free(self.responseString.?);
         }
+        self.connection.close();
+        if (self.params.headers != null) {
+            self.params.headers.?.deinit();
+        }
     }
 
     /// Sends the Http Request
     /// Returns a HttpResponse struct containing the parsed response data
     /// HttpResponse is allocated on the head, the caller is responsible for freeing the corresponding memory
-    pub fn send(self: *HttpRequest) !HttpResponse {
+    pub fn send(self: *HttpRequest) clientError.HttpClientSendError!HttpResponse {
         // Creating the request string
         self.requestString = try self.createHttpRequestString();
 
@@ -170,7 +184,7 @@ pub const HttpRequest = struct {
 
     /// Internals: Create the HTTP Request String from the given parameters
     /// Creates a HTTP/1.0 request string
-    fn createHttpRequestString(self: *HttpRequest) ![]const u8 {
+    fn createHttpRequestString(self: *HttpRequest) clientError.HttpClientCreateRequestError![]const u8 {
         var requestWriter = try std.io.Writer.Allocating.initCapacity(self.allocator, 1024);
         defer requestWriter.deinit();
         var w = &requestWriter.writer;
@@ -208,7 +222,7 @@ pub const HttpRequest = struct {
 
     /// Internals: Reads the response from the HTTP Request into a struct owned string
     /// Dev: No parsing is done in this function
-    fn readResponse(self: *HttpRequest) ![]const u8 {
+    fn readResponse(self: *HttpRequest) clientError.HttpClientReadResponseError![]const u8 {
 
         // Didn't find an alternative to reading the stream 1kb at a time
         var responseWriter = try std.io.Writer.Allocating.initCapacity(self.allocator, 1024);
@@ -228,20 +242,19 @@ pub const HttpRequest = struct {
 
     /// Internals: Parses the HTTP response.
     /// TODO : Only support HTTP/1.0 for now.
-    fn parseResponse(self: *HttpRequest) !HttpResponse {
+    fn parseResponse(self: *HttpRequest) clientError.HttpClientParseResponseError!HttpResponse {
         const response = self.responseString.?;
 
         // First parse the headers
-        const headerEnd = findDoubleCRLF(response) orelse return error.InvalidResponse;
-
+        const headerEnd = try findDoubleCRLF(response);
         const headString = response[0 .. headerEnd - 4];
 
         var it = std.mem.splitSequence(u8, headString, "\r\n");
         // First the status line
-        const statusLine = it.next() orelse return error.InvalidRespInvalidStatusLineonse;
+        const statusLine = it.next() orelse return error.InvalidHttpResponse;
         var statusLineIt = std.mem.splitScalar(u8, statusLine, ' ');
-        const httpVersion = statusLineIt.next() orelse return error.InvalidStatusLine;
-        const statusCode = statusLineIt.next() orelse return error.InvalidStatusLine;
+        const httpVersion = statusLineIt.next() orelse return error.InvalidHttpResponse;
+        const statusCode = statusLineIt.next() orelse return error.InvalidHttpResponse;
         const statusCodeStr = statusLineIt.rest();
 
         // We only handle HTTP/1.0 for now
@@ -266,13 +279,13 @@ pub const HttpRequest = struct {
 };
 
 /// Returns the location of the first occurrence of "\r\n\r\n" in the buffer
-fn findDoubleCRLF(buffer: []const u8) ?usize {
+fn findDoubleCRLF(buffer: []const u8) error{DoubleCRLFNotFound}!usize {
     for (buffer[0 .. buffer.len - 3], 0..) |_, i| {
         if (buffer[i] == '\r' and buffer[i + 1] == '\n' and buffer[i + 2] == '\r' and buffer[i + 3] == '\n') {
             return i + 4; // position just after the header
         }
     }
-    return null;
+    return error.DoubleCRLFNotFound;
 }
 
 // *** Unit Tests *** //
@@ -281,7 +294,6 @@ test "http request format with headers" {
     const allocator = std.testing.allocator;
 
     var headers = std.StringHashMap([]const u8).init(allocator);
-    defer headers.deinit();
     try headers.put("User-Agent", "ZigTestClient");
     try headers.put("Accept", "*/*");
 
@@ -298,8 +310,7 @@ test "http request format with headers" {
 test "http response parsing" {
     const allocator = std.testing.allocator;
 
-    var headers = std.StringHashMap([]const u8).init(allocator);
-    defer headers.deinit();
+    const headers = std.StringHashMap([]const u8).init(allocator);
 
     var httpRequest = try HttpRequest.init(allocator, "example.com", "/test", HttpParams{ .method = Method.GET, .headers = headers });
     defer httpRequest.deinit();
@@ -319,7 +330,6 @@ test "http request percent encoding" {
     const allocator = std.testing.allocator;
 
     var headers = std.StringHashMap([]const u8).init(allocator);
-    defer headers.deinit();
     try headers.put("User-Agent", "ZigTestClient");
     try headers.put("Accept", "*/*");
 

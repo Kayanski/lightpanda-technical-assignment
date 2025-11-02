@@ -29,10 +29,10 @@ exe.root_module.addImport("http_client", http_client.module("http_client"));
 Here are some example usage snippets
 
 ```zig
+// Create a simple request, send it and analyze the response
 const std = @import("std");
 const http_client = @import("http_client");
 
-// Create a simple request, send it and analyze the response
 const allocator = std.heap.page_allocator;
 // For simpler syntax, one can also use 
 // var httpRequest = try http_client.HttpRequest.get(allocator, "http://httpbin.io/get?test_param=1&another_param=%2Fnicoco");
