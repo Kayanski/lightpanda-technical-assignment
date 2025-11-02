@@ -15,9 +15,10 @@ To use that library in your project, run the following commands:
 
 ```bash
     zig fetch --save git+https://github.com/Kayanski/lightpanda-technical-assignment/#HEAD
-``` 
+```
 
 Then don't forget to amend your `build.zig.zon` file with the following lines. This will allow you to import the `http_client` module into your project.
+
 ```zig
     const http_client = b.dependency("http_client", .{});
     exe.root_module.addImport("http_client", http_client.module("http_client"));
@@ -53,7 +54,7 @@ Here are some example usage snippets
         },
         else => return error.ArgsIsNotAnObject,
     }
-``` 
+```
 
 ## Upcoming Features
 
